@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import "./App.css";
 
 let idCounter = 0;
@@ -7,17 +7,71 @@ const createId = () => {
   return `id-${idCounter}`;
 };
 
+const calculateItemFor = (price, rate, markup, margin) => {
+  const baseCost = price * rate;
+  const markedUp = baseCost * (1 + markup / 100);
+  const selling = markedUp / (1 - margin / 100);
+  const profit = selling - markedUp;
+  return { baseCost, markedUp, selling, profit };
+};
+
+const loadSettingsFromStorage = () => {
+  try {
+    const saved = localStorage.getItem("jm_settings");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        exchangeRate: parsed.exchangeRate || 205,
+        markupPercent: parsed.markupPercent || 10,
+        profitMarginPercent: parsed.profitMarginPercent || 30,
+      };
+    }
+  } catch (e) {
+    console.error("Load settings error:", e);
+  }
+  return { exchangeRate: 205, markupPercent: 10, profitMarginPercent: 30 };
+};
+
+const loadItemsFromStorage = () => {
+  try {
+    const savedItems = localStorage.getItem("jm_items");
+    if (savedItems) {
+      const parsed = JSON.parse(savedItems);
+      const maxId = parsed.reduce((max, item) => {
+        const match = String(item.id || "").match(/id-(\\d+)/);
+        return match ? Math.max(max, parseInt(match[1], 10)) : max;
+      }, 0);
+      if (maxId > idCounter) idCounter = maxId;
+      return parsed;
+    }
+  } catch (e) {
+    console.error("Load items error:", e);
+  }
+  return [];
+};
+
+const loadHistoryFromStorage = () => {
+  try {
+    const savedHistory = localStorage.getItem("jm_history");
+    if (savedHistory) return JSON.parse(savedHistory);
+  } catch (e) {
+    console.error("Load history error:", e);
+  }
+  return [];
+};
+
 export default function App() {
   // State
-  const [exchangeRate, setExchangeRate] = useState(205);
-  const [markupPercent, setMarkupPercent] = useState(10);
-  const [profitMarginPercent, setProfitMarginPercent] = useState(30);
+  const initialSettings = loadSettingsFromStorage();
+  const [exchangeRate, setExchangeRate] = useState(initialSettings.exchangeRate);
+  const [markupPercent, setMarkupPercent] = useState(initialSettings.markupPercent);
+  const [profitMarginPercent, setProfitMarginPercent] = useState(initialSettings.profitMarginPercent);
   const [itemName, setItemName] = useState("");
   const [productUrl, setProductUrl] = useState("");
   const [cnyPrice, setCnyPrice] = useState("");
   const [qty, setQty] = useState(1);
   const [batchName, setBatchName] = useState("");
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(() => loadItemsFromStorage());
   const [editingItemId, setEditingItemId] = useState(null);
   const [editingFields, setEditingFields] = useState({
     name: "",
@@ -26,42 +80,13 @@ export default function App() {
     quantity: "1",
     customSellPrice: "",
   });
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState(() => loadHistoryFromStorage());
   const [activeTab, setActiveTab] = useState("pricing");
   const [expandedBatch, setExpandedBatch] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   
   // Hardcoded company logo
   const logoUrl = "https://res.cloudinary.com/dupgdbwrt/image/upload/v1759971092/icon-512x512.png_ygtda9.png";
-
-  // Load from localStorage
-  useEffect(() => {
-    try {
-      const savedItems = localStorage.getItem("jm_items");
-      if (savedItems) {
-        const parsed = JSON.parse(savedItems);
-        setItems(parsed);
-        const maxId = parsed.reduce((max, item) => {
-          const match = String(item.id || "").match(/id-(\d+)/);
-          return match ? Math.max(max, parseInt(match[1], 10)) : max;
-        }, 0);
-        if (maxId > idCounter) idCounter = maxId;
-      }
-      
-      const savedSettings = localStorage.getItem("jm_settings");
-      if (savedSettings) {
-        const s = JSON.parse(savedSettings);
-        setExchangeRate(s.exchangeRate || 205);
-        setMarkupPercent(s.markupPercent || 10);
-        setProfitMarginPercent(s.profitMarginPercent || 30);
-      }
-      
-      const savedHistory = localStorage.getItem("jm_history");
-      if (savedHistory) setHistory(JSON.parse(savedHistory));
-    } catch (e) {
-      console.error("Load error:", e);
-    }
-  }, []);
 
   // Save to localStorage
   useEffect(() => {
@@ -77,16 +102,40 @@ export default function App() {
   }, [history]);
 
   // Calculate pricing
-  const calculateItem = useCallback((price) => {
-    const baseCost = price * exchangeRate;
-    const markedUp = baseCost * (1 + markupPercent / 100);
-    const selling = markedUp / (1 - profitMarginPercent / 100);
-    const profit = selling - markedUp;
-    return { baseCost, markedUp, selling, profit };
-  }, [exchangeRate, markupPercent, profitMarginPercent]);
+  const calculateItem = useCallback(
+    (price) => calculateItemFor(price, exchangeRate, markupPercent, profitMarginPercent),
+    [exchangeRate, markupPercent, profitMarginPercent]
+  );
 
   const getEffectiveSell = (item) => (item.customSellPrice ?? item.selling);
   const getEffectiveProfit = (item) => getEffectiveSell(item) - item.markedUp;
+
+  const recalcItemsWithSettings = (nextExchangeRate, nextMarkupPercent, nextProfitMarginPercent) => {
+    setItems((prev) =>
+      prev.map((item) => ({
+        ...item,
+        ...calculateItemFor(item.cnyPrice, nextExchangeRate, nextMarkupPercent, nextProfitMarginPercent),
+      }))
+    );
+  };
+
+  const handleExchangeRateChange = (value) => {
+    const next = Number.isFinite(value) ? value : 0;
+    setExchangeRate(next);
+    recalcItemsWithSettings(next, markupPercent, profitMarginPercent);
+  };
+
+  const handleMarkupPercentChange = (value) => {
+    const next = Number.isFinite(value) ? value : 0;
+    setMarkupPercent(next);
+    recalcItemsWithSettings(exchangeRate, next, profitMarginPercent);
+  };
+
+  const handleProfitMarginChange = (value) => {
+    const next = Number.isFinite(value) ? value : 0;
+    setProfitMarginPercent(next);
+    recalcItemsWithSettings(exchangeRate, markupPercent, next);
+  };
 
   // Add item
   const handleAddItem = (e) => {
@@ -170,27 +219,16 @@ export default function App() {
     setItems(items.filter((item) => item.id !== id));
   };
 
-  // Recalculate all items when settings change
-  useEffect(() => {
-    if (items.length > 0) {
-      setItems((prev) =>
-        prev.map((item) => ({
-          ...item,
-          ...calculateItem(item.cnyPrice),
-        }))
-      );
-    }
-  }, [calculateItem, items.length]);
-
   // Totals
   const totals = items.reduce(
     (acc, item) => ({
       units: acc.units + item.quantity,
+      cny: acc.cny + item.cnyPrice * item.quantity,
       cost: acc.cost + item.markedUp * item.quantity,
       revenue: acc.revenue + getEffectiveSell(item) * item.quantity,
       profit: acc.profit + getEffectiveProfit(item) * item.quantity,
     }),
-    { units: 0, cost: 0, revenue: 0, profit: 0 }
+    { units: 0, cny: 0, cost: 0, revenue: 0, profit: 0 }
   );
 
   const margin = totals.revenue > 0 ? (totals.profit / totals.revenue) * 100 : 0;
@@ -239,6 +277,9 @@ export default function App() {
 
   // Format number
   const fmt = (n) => Math.round(n).toLocaleString();
+  const fmtAmount = (n, currency) => `${currency} ${fmt(n)}`;
+  const fmtNGN = (n) => fmtAmount(n, "NGN");
+  const fmtCNY = (n) => fmtAmount(n, "CNY");
 
   // Normalize product links to accept non-ASCII domains and missing protocols
   const normalizeProductUrl = (rawUrl) => {
@@ -335,20 +376,20 @@ export default function App() {
     if (items.length === 0) return;
     
     const headers = ["Item Name", "CNY Price", "Quantity", "Cost (NGN)", "Selling (NGN)", "Custom Sell (NGN)", "Profit (NGN)", "Total Profit (NGN)"];
-    const rows = items.map((item) => {
-      const sell = getEffectiveSell(item);
-      const profit = getEffectiveProfit(item);
-      return [
-        item.name,
-        item.cnyPrice.toFixed(2),
-        item.quantity,
-        Math.round(item.markedUp),
-        Math.round(item.selling),
-        item.customSellPrice != null ? Math.round(item.customSellPrice) : "",
-        Math.round(profit),
-        Math.round(profit * item.quantity),
-      ];
-    });
+      const rows = items.map((item) => {
+        const sell = getEffectiveSell(item);
+        const profit = getEffectiveProfit(item);
+        return [
+          item.name,
+          item.cnyPrice.toFixed(2),
+          item.quantity,
+          Math.round(item.markedUp),
+          Math.round(sell),
+          item.customSellPrice != null ? Math.round(item.customSellPrice) : "",
+          Math.round(profit),
+          Math.round(profit * item.quantity),
+        ];
+      });
     
     // Add totals row
     rows.push([]);
@@ -378,13 +419,13 @@ export default function App() {
           </div>
         </div>
         <div className="header-info">
-          <span className="rate-badge">1 CNY = ₦{exchangeRate}</span>
+          <span className="rate-badge">1 CNY = {fmtNGN(exchangeRate)}</span>
           <button
             type="button"
             className="btn-settings"
             onClick={() => setShowSettings(!showSettings)}
           >
-            ⚙️ Settings
+            Settings
           </button>
         </div>
       </header>
@@ -394,11 +435,11 @@ export default function App() {
         <div className="settings-panel">
           <div className="settings-grid">
             <div className="setting-item">
-              <label>Exchange Rate (CNY → NGN)</label>
+              <label>Exchange Rate (CNY to NGN)</label>
               <input
                 type="number"
                 value={exchangeRate}
-                onChange={(e) => setExchangeRate(parseFloat(e.target.value) || 0)}
+                onChange={(e) => handleExchangeRateChange(parseFloat(e.target.value))}
               />
             </div>
             <div className="setting-item">
@@ -406,7 +447,7 @@ export default function App() {
               <input
                 type="number"
                 value={markupPercent}
-                onChange={(e) => setMarkupPercent(parseFloat(e.target.value) || 0)}
+                onChange={(e) => handleMarkupPercentChange(parseFloat(e.target.value))}
               />
             </div>
             <div className="setting-item">
@@ -414,12 +455,12 @@ export default function App() {
               <input
                 type="number"
                 value={profitMarginPercent}
-                onChange={(e) => setProfitMarginPercent(parseFloat(e.target.value) || 0)}
+                onChange={(e) => handleProfitMarginChange(parseFloat(e.target.value))}
               />
             </div>
           </div>
           <div className="settings-preview">
-            Example: ¥100 → ₦{fmt(calculateItem(100).selling)} selling price
+            Example: CNY 100 -> {fmtNGN(calculateItem(100).selling)} selling price
           </div>
         </div>
       )}
@@ -431,14 +472,14 @@ export default function App() {
           className={`tab ${activeTab === "pricing" ? "active" : ""}`}
           onClick={() => setActiveTab("pricing")}
         >
-          📦 Pricing
+          Pricing
         </button>
         <button
           type="button"
           className={`tab ${activeTab === "history" ? "active" : ""}`}
           onClick={() => setActiveTab("history")}
         >
-          📋 History ({history.length})
+          History ({history.length})
         </button>
       </nav>
 
@@ -453,12 +494,20 @@ export default function App() {
                 <span className="stat-value">{totals.units}</span>
               </div>
               <div className="stat-card">
+                <span className="stat-label">CNY Total</span>
+                <span className="stat-value">{fmtCNY(totals.cny)}</span>
+              </div>
+              <div className="stat-card">
+                <span className="stat-label">Cost</span>
+                <span className="stat-value">{fmtNGN(totals.cost)}</span>
+              </div>
+              <div className="stat-card">
                 <span className="stat-label">Revenue</span>
-                <span className="stat-value">₦{fmt(totals.revenue)}</span>
+                <span className="stat-value">{fmtNGN(totals.revenue)}</span>
               </div>
               <div className="stat-card highlight">
                 <span className="stat-label">Profit</span>
-                <span className="stat-value">₦{fmt(totals.profit)}</span>
+                <span className="stat-value">{fmtNGN(totals.profit)}</span>
               </div>
               <div className="stat-card">
                 <span className="stat-label">Margin</span>
@@ -469,7 +518,7 @@ export default function App() {
             {/* Add Item Form */}
             <div className="card">
               <div className="card-header">
-                <h2>➕ Add New Item</h2>
+                <h2>Add New Item</h2>
               </div>
               <form onSubmit={handleAddItem} className="add-form">
                 <div className="form-group">
@@ -516,8 +565,7 @@ export default function App() {
               </form>
               {cnyPrice > 0 && (
                 <div className="preview-box">
-                  <strong>Preview:</strong> Sell at ₦{fmt(calculateItem(parseFloat(cnyPrice)).selling)} 
-                  {" "}(₦{fmt(calculateItem(parseFloat(cnyPrice)).profit)} profit per item)
+                  <strong>Preview:</strong> Sell at {fmtNGN(calculateItem(parseFloat(cnyPrice)).selling)} ({fmtNGN(calculateItem(parseFloat(cnyPrice)).profit)} profit per item)
                 </div>
               )}
             </div>
@@ -525,7 +573,7 @@ export default function App() {
             {/* Items List */}
             <div className="card">
               <div className="card-header">
-                <h2>📋 Items ({items.length})</h2>
+                <h2>Items ({items.length})</h2>
                 <div className="card-actions">
                   <input
                     type="text"
@@ -537,27 +585,20 @@ export default function App() {
                   <button
                     type="button"
                     className="btn-secondary"
-                    onClick={handleSaveBatch}
-                    disabled={items.length === 0}
-                  >
-                    💾 Save
+                    onClick={handleSaveBatch}>
+                    Save
                   </button>
                   <button
                     type="button"
                     className="btn-secondary"
-                    onClick={handleExportCSV}
-                    disabled={items.length === 0}
-                    title="Export to CSV"
-                  >
-                    📊 CSV
+                    onClick={handleExportCSV} title="Export to CSV">
+                    CSV
                   </button>
                   <button
                     type="button"
                     className="btn-danger"
-                    onClick={handleClearItems}
-                    disabled={items.length === 0}
-                  >
-                    🗑️ Clear
+                    onClick={handleClearItems}>
+                    Clear
                   </button>
                 </div>
               </div>
@@ -574,11 +615,11 @@ export default function App() {
                         <th>Item</th>
                         <th>CNY</th>
                         <th>Qty</th>
-                        <th>Cost (₦)</th>
-                        <th>Sell (₦)</th>
-                        <th>Custom Sell (₦)</th>
-                        <th>Profit (₦)</th>
-                        <th>Total (₦)</th>
+                        <th>Cost (NGN)</th>
+                        <th>Sell (NGN)</th>
+                        <th>Custom Sell (NGN)</th>
+                        <th>Profit (NGN)</th>
+                        <th>Total (NGN)</th>
                         <th>Link</th>
                         <th>Actions</th>
                       </tr>
@@ -612,7 +653,7 @@ export default function App() {
                                   onChange={(e) => handleEditFieldChange("cnyPrice", e.target.value)}
                                 />
                               ) : (
-                                <>¥{item.cnyPrice.toFixed(2)}</>
+                                <>CNY {item.cnyPrice.toFixed(2)}</>
                               )}
                             </td>
                             <td data-label="Qty">
@@ -628,8 +669,8 @@ export default function App() {
                                 item.quantity
                               )}
                             </td>
-                            <td data-label="Cost">₦{fmt(item.markedUp)}</td>
-                            <td data-label="Sell">₦{fmt(item.selling)}</td>
+                            <td data-label="Cost">{fmtNGN(item.markedUp)}</td>
+                            <td data-label="Sell">{fmtNGN(effectiveSell)}</td>
                             <td data-label="Custom Sell">
                               {isEditing ? (
                                 <input
@@ -642,13 +683,13 @@ export default function App() {
                                   placeholder="Override"
                                 />
                               ) : item.customSellPrice != null ? (
-                                <>₦{fmt(item.customSellPrice)}</>
+                                <>{fmtNGN(item.customSellPrice)}</>
                               ) : (
                                 <span className="muted">Auto</span>
                               )}
                             </td>
-                            <td data-label="Profit" className="profit-cell">₦{fmt(effectiveProfit)}</td>
-                            <td data-label="Total" className="total-cell">₦{fmt(effectiveProfit * item.quantity)}</td>
+                            <td data-label="Profit" className="profit-cell">{fmtNGN(effectiveProfit)}</td>
+                            <td data-label="Total" className="total-cell">{fmtNGN(effectiveProfit * item.quantity)}</td>
                             <td data-label="Link">
                               {isEditing ? (
                                 <input
@@ -694,10 +735,8 @@ export default function App() {
                                   </button>
                                   <button
                                     type="button"
-                                    className="btn-delete"
-                                    onClick={() => handleDeleteItem(item.id)}
-                                  >
-                                    ✕
+                                    className="btn-delete" onClick={() => handleDeleteItem(item.id)}>
+                                    X
                                   </button>
                                 </div>
                               )}
@@ -708,12 +747,14 @@ export default function App() {
                     </tbody>
                     <tfoot>
                       <tr>
-                        <td colSpan="3"><strong>TOTALS</strong></td>
-                        <td>₦{fmt(totals.cost)}</td>
-                        <td>₦{fmt(totals.revenue)}</td>
-                        <td className="muted">—</td>
-                        <td className="profit-cell">₦{fmt(totals.profit)}</td>
-                        <td className="total-cell">₦{fmt(totals.profit)}</td>
+                        <td><strong>TOTALS</strong></td>
+                        <td>{fmtCNY(totals.cny)}</td>
+                        <td>{totals.units}</td>
+                        <td>{fmtNGN(totals.cost)}</td>
+                        <td>{fmtNGN(totals.revenue)}</td>
+                        <td className="muted">N/A</td>
+                        <td className="profit-cell">{fmtNGN(totals.profit)}</td>
+                        <td className="total-cell">{fmtNGN(totals.profit)}</td>
                         <td></td>
                         <td></td>
                       </tr>
@@ -728,10 +769,10 @@ export default function App() {
         {activeTab === "history" && (
           <div className="card">
             <div className="card-header">
-              <h2>📋 Saved Batches ({history.length})</h2>
+              <h2>Saved Batches ({history.length})</h2>
               <div className="card-actions">
                 <label className="btn-secondary import-btn">
-                  📥 Import
+                  Import
                   <input
                     type="file"
                     accept=".json"
@@ -741,11 +782,8 @@ export default function App() {
                 </label>
                 <button
                   type="button"
-                  className="btn-secondary"
-                  onClick={handleExportAllBatches}
-                  disabled={history.length === 0}
-                >
-                  📤 Export All
+                  className="btn-secondary" onClick={handleExportAllBatches}>
+                  Export All
                 </button>
               </div>
             </div>
@@ -767,16 +805,14 @@ export default function App() {
                     >
                       <div className="batch-info">
                         <strong>{batch.name}</strong>
-                        <span className="batch-meta">
-                          {batch.items.length} items · ₦{fmt(batch.totals.revenue)} revenue · ₦{fmt(batch.totals.profit)} profit
-                        </span>
+                        <span className="batch-meta">{batch.items.length} items - {fmtNGN(batch.totals.revenue)} revenue - {fmtNGN(batch.totals.profit)} profit</span>
                         <span className="batch-date">
                           {new Date(batch.date).toLocaleDateString()}
-                          {batch.importedAt && " · Imported"}
+                          {batch.importedAt && " - Imported"}
                         </span>
                       </div>
                       <span className="batch-toggle">
-                        {expandedBatch === batch.id ? "▼" : "▶"}
+                        {expandedBatch === batch.id ? "-" : "+"}
                       </span>
                     </div>
 
@@ -785,29 +821,23 @@ export default function App() {
                         <div className="batch-actions">
                           <button
                             type="button"
-                            className="btn-secondary"
-                            onClick={() => handleLoadBatch(batch)}
-                          >
-                            📥 Load
+                            className="btn-secondary" onClick={() => handleLoadBatch(batch)}>
+                            Load
                           </button>
                           <button
                             type="button"
-                            className="btn-secondary"
-                            onClick={() => handleExportBatch(batch)}
-                          >
-                            📤 Export
+                            className="btn-secondary" onClick={() => handleExportBatch(batch)}>
+                            Export
                           </button>
                           <button
                             type="button"
-                            className="btn-danger"
-                            onClick={() => handleDeleteBatch(batch.id)}
-                          >
-                            🗑️ Delete
+                            className="btn-danger" onClick={() => handleDeleteBatch(batch.id)}>
+                            Delete
                           </button>
                         </div>
                         {batch.settings && (
                           <div className="batch-settings-info">
-                            FX: {batch.settings.exchangeRate} · Markup: {batch.settings.markupPercent}% · Margin: {batch.settings.profitMarginPercent}%
+                            FX: {batch.settings.exchangeRate} | Markup: {batch.settings.markupPercent}% | Margin: {batch.settings.profitMarginPercent}%
                           </div>
                         )}
                         <div className="batch-items">
@@ -815,7 +845,7 @@ export default function App() {
                             <div key={idx} className="batch-item-row">
                               <span>{item.name}</span>
                               <span>
-                                {item.quantity}x · ¥{item.cnyPrice} · Sell: ₦{fmt(getEffectiveSell(item))}
+                                {item.quantity}x - CNY {item.cnyPrice} - Sell: {fmtNGN(getEffectiveSell(item))}
                                 {item.customSellPrice != null && " (custom)"}
                               </span>
                               {item.url && (
@@ -844,6 +874,55 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

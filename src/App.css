@@ -248,7 +248,7 @@ body {
 /* ===== Stats Row ===== */
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 20px;
 }
 
@@ -684,6 +684,13 @@ tbody tr:hover {
 }
 
 /* ===== Responsive ===== */
+
+/* Desktop */
+@media (min-width: 1024px) {
+  .stats-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
 
 /* Large Desktop */
 @media (min-width: 1400px) {
