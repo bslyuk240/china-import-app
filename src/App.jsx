@@ -89,6 +89,30 @@ export default function App() {
     setQty(1);
   };
 
+  // Update an existing item (supports loaded batches)
+  const handleUpdateItem = (id, field, value) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const updated = { ...item };
+
+        if (field === "name") updated.name = value;
+        if (field === "url") updated.url = normalizeProductUrl(value);
+        if (field === "cnyPrice") {
+          const n = parseFloat(value);
+          updated.cnyPrice = Number.isFinite(n) && n >= 0 ? n : 0;
+        }
+        if (field === "quantity") {
+          const n = parseInt(value);
+          updated.quantity = Number.isFinite(n) && n > 0 ? n : 1;
+        }
+
+        const recalculated = calculateItem(updated.cnyPrice, updated.quantity);
+        return { ...updated, ...recalculated };
+      })
+    );
+  };
+
   // Delete item
   const handleDeleteItem = (id) => {
     setItems(items.filter((item) => item.id !== id));
@@ -504,16 +528,45 @@ export default function App() {
                     <tbody>
                       {items.map((item) => (
                         <tr key={item.id}>
-                          <td className="item-name">{item.name}</td>
-                          <td>¥{item.cnyPrice.toFixed(2)}</td>
-                          <td>{item.quantity}</td>
+                          <td className="item-name">
+                            <input
+                              className="table-input"
+                              value={item.name}
+                              onChange={(e) => handleUpdateItem(item.id, "name", e.target.value)}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              className="table-input number"
+                              step="0.01"
+                              min="0"
+                              value={item.cnyPrice}
+                              onChange={(e) => handleUpdateItem(item.id, "cnyPrice", e.target.value)}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              className="table-input number"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => handleUpdateItem(item.id, "quantity", e.target.value)}
+                            />
+                          </td>
                           <td>₦{fmt(item.markedUp)}</td>
                           <td>₦{fmt(item.selling)}</td>
                           <td className="profit-cell">₦{fmt(item.profit)}</td>
                           <td className="total-cell">₦{fmt(item.profit * item.quantity)}</td>
                           <td>
+                            <input
+                              className="table-input"
+                              placeholder="https://your-link"
+                              value={item.url || ""}
+                              onChange={(e) => handleUpdateItem(item.id, "url", e.target.value)}
+                            />
                             {item.url ? (
-                              <a href={item.url} target="_blank" rel="noreferrer" className="btn-secondary">
+                              <a href={item.url} target="_blank" rel="noreferrer" className="btn-secondary" style={{ marginTop: "6px" }}>
                                 View
                               </a>
                             ) : (

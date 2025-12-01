@@ -501,6 +501,23 @@ tbody tr:hover {
   background: #f8fafc;
 }
 
+.table-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.table-input:focus {
+  outline: none;
+  border-color: #1e40af;
+}
+
+.table-input.number {
+  max-width: 120px;
+}
+
 .item-name {
   font-weight: 600;
   color: #1a202c;
