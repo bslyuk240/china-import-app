@@ -24,6 +24,7 @@ export default function App() {
     url: "",
     cnyPrice: "",
     quantity: "1",
+    customSellPrice: "",
   });
   const [history, setHistory] = useState([]);
   const [activeTab, setActiveTab] = useState("pricing");
@@ -84,6 +85,9 @@ export default function App() {
     return { baseCost, markedUp, selling, profit };
   }, [exchangeRate, markupPercent, profitMarginPercent]);
 
+  const getEffectiveSell = (item) => (item.customSellPrice ?? item.selling);
+  const getEffectiveProfit = (item) => getEffectiveSell(item) - item.markedUp;
+
   // Add item
   const handleAddItem = (e) => {
     e.preventDefault();
@@ -100,6 +104,7 @@ export default function App() {
       url: normalizedUrl,
       cnyPrice: price,
       quantity,
+      customSellPrice: null,
       ...calc,
     };
 
@@ -118,12 +123,13 @@ export default function App() {
       url: item.url || "",
       cnyPrice: item.cnyPrice.toString(),
       quantity: item.quantity.toString(),
+      customSellPrice: item.customSellPrice != null ? item.customSellPrice.toString() : "",
     });
   };
 
   const handleCancelEdit = () => {
     setEditingItemId(null);
-    setEditingFields({ name: "", url: "", cnyPrice: "", quantity: "1" });
+    setEditingFields({ name: "", url: "", cnyPrice: "", quantity: "1", customSellPrice: "" });
   };
 
   const handleEditFieldChange = (field, value) => {
@@ -133,8 +139,10 @@ export default function App() {
   const handleSaveEdit = (id) => {
     const parsedPrice = parseFloat(editingFields.cnyPrice);
     const parsedQty = parseInt(editingFields.quantity);
+    const parsedCustomSell = parseFloat(editingFields.customSellPrice);
     const price = Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : 0;
     const quantity = Number.isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 1;
+    const customSellPrice = Number.isFinite(parsedCustomSell) && parsedCustomSell >= 0 ? parsedCustomSell : null;
     const normalizedUrl = normalizeProductUrl(editingFields.url || "");
     const name = editingFields.name.trim() || "Untitled Item";
     const calc = calculateItem(price);
@@ -148,6 +156,7 @@ export default function App() {
               url: normalizedUrl,
               cnyPrice: price,
               quantity,
+              customSellPrice,
               ...calc,
             }
           : item
@@ -178,8 +187,8 @@ export default function App() {
     (acc, item) => ({
       units: acc.units + item.quantity,
       cost: acc.cost + item.markedUp * item.quantity,
-      revenue: acc.revenue + item.selling * item.quantity,
-      profit: acc.profit + item.profit * item.quantity,
+      revenue: acc.revenue + getEffectiveSell(item) * item.quantity,
+      profit: acc.profit + getEffectiveProfit(item) * item.quantity,
     }),
     { units: 0, cost: 0, revenue: 0, profit: 0 }
   );
@@ -325,16 +334,21 @@ export default function App() {
   const handleExportCSV = () => {
     if (items.length === 0) return;
     
-    const headers = ["Item Name", "CNY Price", "Quantity", "Cost (NGN)", "Selling (NGN)", "Profit (NGN)", "Total Profit (NGN)"];
-    const rows = items.map((item) => [
-      item.name,
-      item.cnyPrice.toFixed(2),
-      item.quantity,
-      Math.round(item.markedUp),
-      Math.round(item.selling),
-      Math.round(item.profit),
-      Math.round(item.profit * item.quantity),
-    ]);
+    const headers = ["Item Name", "CNY Price", "Quantity", "Cost (NGN)", "Selling (NGN)", "Custom Sell (NGN)", "Profit (NGN)", "Total Profit (NGN)"];
+    const rows = items.map((item) => {
+      const sell = getEffectiveSell(item);
+      const profit = getEffectiveProfit(item);
+      return [
+        item.name,
+        item.cnyPrice.toFixed(2),
+        item.quantity,
+        Math.round(item.markedUp),
+        Math.round(item.selling),
+        item.customSellPrice != null ? Math.round(item.customSellPrice) : "",
+        Math.round(profit),
+        Math.round(profit * item.quantity),
+      ];
+    });
     
     // Add totals row
     rows.push([]);
@@ -562,6 +576,7 @@ export default function App() {
                         <th>Qty</th>
                         <th>Cost (₦)</th>
                         <th>Sell (₦)</th>
+                        <th>Custom Sell (₦)</th>
                         <th>Profit (₦)</th>
                         <th>Total (₦)</th>
                         <th>Link</th>
@@ -571,6 +586,8 @@ export default function App() {
                     <tbody>
                       {items.map((item) => {
                         const isEditing = editingItemId === item.id;
+                        const effectiveSell = getEffectiveSell(item);
+                        const effectiveProfit = getEffectiveProfit(item);
                         return (
                           <tr key={item.id} className={isEditing ? "editing-row" : ""}>
                             <td className="item-name" data-label="Item">
@@ -613,8 +630,25 @@ export default function App() {
                             </td>
                             <td data-label="Cost">₦{fmt(item.markedUp)}</td>
                             <td data-label="Sell">₦{fmt(item.selling)}</td>
-                            <td data-label="Profit" className="profit-cell">₦{fmt(item.profit)}</td>
-                            <td data-label="Total" className="total-cell">₦{fmt(item.profit * item.quantity)}</td>
+                            <td data-label="Custom Sell">
+                              {isEditing ? (
+                                <input
+                                  type="number"
+                                  className="table-input number"
+                                  min="0"
+                                  step="1"
+                                  value={editingFields.customSellPrice}
+                                  onChange={(e) => handleEditFieldChange("customSellPrice", e.target.value)}
+                                  placeholder="Override"
+                                />
+                              ) : item.customSellPrice != null ? (
+                                <>₦{fmt(item.customSellPrice)}</>
+                              ) : (
+                                <span className="muted">Auto</span>
+                              )}
+                            </td>
+                            <td data-label="Profit" className="profit-cell">₦{fmt(effectiveProfit)}</td>
+                            <td data-label="Total" className="total-cell">₦{fmt(effectiveProfit * item.quantity)}</td>
                             <td data-label="Link">
                               {isEditing ? (
                                 <input
@@ -677,6 +711,7 @@ export default function App() {
                         <td colSpan="3"><strong>TOTALS</strong></td>
                         <td>₦{fmt(totals.cost)}</td>
                         <td>₦{fmt(totals.revenue)}</td>
+                        <td className="muted">—</td>
                         <td className="profit-cell">₦{fmt(totals.profit)}</td>
                         <td className="total-cell">₦{fmt(totals.profit)}</td>
                         <td></td>
@@ -779,7 +814,10 @@ export default function App() {
                           {batch.items.map((item, idx) => (
                             <div key={idx} className="batch-item-row">
                               <span>{item.name}</span>
-                              <span>{item.quantity}x · ¥{item.cnyPrice} · Sell: ₦{fmt(item.selling)}</span>
+                              <span>
+                                {item.quantity}x · ¥{item.cnyPrice} · Sell: ₦{fmt(getEffectiveSell(item))}
+                                {item.customSellPrice != null && " (custom)"}
+                              </span>
                               {item.url && (
                                 <a
                                   href={item.url}
