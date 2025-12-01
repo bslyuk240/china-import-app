@@ -71,11 +71,12 @@ export default function App() {
     const price = parseFloat(cnyPrice);
     const quantity = parseInt(qty);
     const calc = calculateItem(price, quantity);
+    const normalizedUrl = normalizeProductUrl(productUrl);
 
     const newItem = {
       id: Date.now().toString(),
       name: itemName.trim(),
-      url: productUrl.trim(),
+      url: normalizedUrl,
       cnyPrice: price,
       quantity,
       ...calc,
@@ -162,6 +163,20 @@ export default function App() {
 
   // Format number
   const fmt = (n) => Math.round(n).toLocaleString();
+
+  // Normalize product links to accept non-ASCII domains and missing protocols
+  const normalizeProductUrl = (rawUrl) => {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return "";
+    const hasProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed);
+    const urlWithProtocol = hasProtocol ? trimmed : `https://${trimmed}`;
+    try {
+      return encodeURI(urlWithProtocol);
+    } catch (err) {
+      console.warn("Could not encode product URL, using raw value", err);
+      return urlWithProtocol;
+    }
+  };
 
   // Export batch to JSON file
   const handleExportBatch = (batch) => {
@@ -388,8 +403,9 @@ export default function App() {
                 <div className="form-group">
                   <label>Product URL</label>
                   <input
-                    type="url"
-                    placeholder="https://example.com/item"
+                    type="text"
+                    inputMode="url"
+                    placeholder="https://example.com/item or 1688/拼多多 link"
                     value={productUrl}
                     onChange={(e) => setProductUrl(e.target.value)}
                   />
