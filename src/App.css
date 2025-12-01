@@ -430,6 +430,12 @@ body {
   align-items: end;
 }
 
+.add-form .btn-primary {
+  padding: 10px 14px;
+  min-width: 120px;
+  border-radius: 8px;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;

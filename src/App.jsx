@@ -7,6 +7,7 @@ export default function App() {
   const [markupPercent, setMarkupPercent] = useState(10);
   const [profitMarginPercent, setProfitMarginPercent] = useState(30);
   const [itemName, setItemName] = useState("");
+  const [productUrl, setProductUrl] = useState("");
   const [cnyPrice, setCnyPrice] = useState("");
   const [qty, setQty] = useState(1);
   const [batchName, setBatchName] = useState("");
@@ -74,6 +75,7 @@ export default function App() {
     const newItem = {
       id: Date.now().toString(),
       name: itemName.trim(),
+      url: productUrl.trim(),
       cnyPrice: price,
       quantity,
       ...calc,
@@ -81,6 +83,7 @@ export default function App() {
 
     setItems([...items, newItem]);
     setItemName("");
+    setProductUrl("");
     setCnyPrice("");
     setQty(1);
   };
@@ -383,6 +386,15 @@ export default function App() {
                   />
                 </div>
                 <div className="form-group">
+                  <label>Product URL</label>
+                  <input
+                    type="url"
+                    placeholder="https://example.com/item"
+                    value={productUrl}
+                    onChange={(e) => setProductUrl(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
                   <label>Price (CNY)</label>
                   <input
                     type="number"
@@ -469,6 +481,7 @@ export default function App() {
                         <th>Sell (₦)</th>
                         <th>Profit (₦)</th>
                         <th>Total (₦)</th>
+                        <th>Link</th>
                         <th></th>
                       </tr>
                     </thead>
@@ -482,6 +495,15 @@ export default function App() {
                           <td>₦{fmt(item.selling)}</td>
                           <td className="profit-cell">₦{fmt(item.profit)}</td>
                           <td className="total-cell">₦{fmt(item.profit * item.quantity)}</td>
+                          <td>
+                            {item.url ? (
+                              <a href={item.url} target="_blank" rel="noreferrer" className="btn-secondary">
+                                View
+                              </a>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
                           <td>
                             <button
                               type="button"
@@ -501,6 +523,7 @@ export default function App() {
                         <td>₦{fmt(totals.revenue)}</td>
                         <td className="profit-cell">₦{fmt(totals.profit)}</td>
                         <td className="total-cell">₦{fmt(totals.profit)}</td>
+                        <td></td>
                         <td></td>
                       </tr>
                     </tfoot>
@@ -601,6 +624,17 @@ export default function App() {
                             <div key={idx} className="batch-item-row">
                               <span>{item.name}</span>
                               <span>{item.quantity}x · ¥{item.cnyPrice} · Sell: ₦{fmt(item.selling)}</span>
+                              {item.url && (
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="btn-secondary"
+                                  style={{ marginLeft: "auto" }}
+                                >
+                                  View Link
+                                </a>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -616,3 +650,10 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
+
