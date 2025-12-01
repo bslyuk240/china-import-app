@@ -501,6 +501,23 @@ tbody tr:hover {
   background: #f8fafc;
 }
 
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn-small {
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+.editing-row {
+  background: #f8fafc;
+}
+
 .table-input {
   width: 100%;
   padding: 8px 10px;
@@ -533,11 +550,11 @@ tbody tr:hover {
   color: #1e40af;
 }
 
-tfoot td {
-  background: #f8fafc;
-  font-weight: 600;
-  border-top: 2px solid #e2e8f0;
-}
+  tfoot td {
+    background: #f8fafc;
+    font-weight: 600;
+    border-top: 2px solid #e2e8f0;
+  }
 
 /* ===== Empty State ===== */
 .empty-state {
@@ -812,21 +829,73 @@ tfoot td {
     padding: 0 14px;
   }
 
-  table {
-    font-size: 12px;
+  table,
+  tbody,
+  tr {
+    display: block;
+    width: 100%;
   }
 
-  th, td {
-    padding: 10px 8px;
+  thead {
+    display: none;
+  }
+
+  tbody tr {
+    margin-bottom: 12px;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
+    background: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  }
+
+  td {
+    padding: 12px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  td:last-child {
+    border-bottom: none;
   }
   
-  th {
-    font-size: 10px;
+  td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    color: #64748b;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  
+  .table-input {
+    font-size: 13px;
+  }
+  
+  .table-input.number {
+    max-width: 120px;
+  }
+
+  .row-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  tfoot {
+    display: block;
+  }
+
+  tfoot td {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 14px;
   }
   
   .btn-delete {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     font-size: 14px;
   }
   

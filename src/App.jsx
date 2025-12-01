@@ -1,5 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import "./App.css";
+
+let idCounter = 0;
+const createId = () => {
+  idCounter += 1;
+  return `id-${idCounter}`;
+};
 
 export default function App() {
   // State
@@ -12,6 +18,13 @@ export default function App() {
   const [qty, setQty] = useState(1);
   const [batchName, setBatchName] = useState("");
   const [items, setItems] = useState([]);
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editingFields, setEditingFields] = useState({
+    name: "",
+    url: "",
+    cnyPrice: "",
+    quantity: "1",
+  });
   const [history, setHistory] = useState([]);
   const [activeTab, setActiveTab] = useState("pricing");
   const [expandedBatch, setExpandedBatch] = useState(null);
@@ -24,7 +37,15 @@ export default function App() {
   useEffect(() => {
     try {
       const savedItems = localStorage.getItem("jm_items");
-      if (savedItems) setItems(JSON.parse(savedItems));
+      if (savedItems) {
+        const parsed = JSON.parse(savedItems);
+        setItems(parsed);
+        const maxId = parsed.reduce((max, item) => {
+          const match = String(item.id || "").match(/id-(\d+)/);
+          return match ? Math.max(max, parseInt(match[1], 10)) : max;
+        }, 0);
+        if (maxId > idCounter) idCounter = maxId;
+      }
       
       const savedSettings = localStorage.getItem("jm_settings");
       if (savedSettings) {
@@ -55,13 +76,13 @@ export default function App() {
   }, [history]);
 
   // Calculate pricing
-  const calculateItem = (price, quantity) => {
+  const calculateItem = useCallback((price) => {
     const baseCost = price * exchangeRate;
     const markedUp = baseCost * (1 + markupPercent / 100);
     const selling = markedUp / (1 - profitMarginPercent / 100);
     const profit = selling - markedUp;
     return { baseCost, markedUp, selling, profit };
-  };
+  }, [exchangeRate, markupPercent, profitMarginPercent]);
 
   // Add item
   const handleAddItem = (e) => {
@@ -70,11 +91,11 @@ export default function App() {
 
     const price = parseFloat(cnyPrice);
     const quantity = parseInt(qty);
-    const calc = calculateItem(price, quantity);
+    const calc = calculateItem(price);
     const normalizedUrl = normalizeProductUrl(productUrl);
 
     const newItem = {
-      id: Date.now().toString(),
+      id: createId(),
       name: itemName.trim(),
       url: normalizedUrl,
       cnyPrice: price,
@@ -89,28 +110,50 @@ export default function App() {
     setQty(1);
   };
 
-  // Update an existing item (supports loaded batches)
-  const handleUpdateItem = (id, field, value) => {
+  // Begin editing an item
+  const handleStartEdit = (item) => {
+    setEditingItemId(item.id);
+    setEditingFields({
+      name: item.name,
+      url: item.url || "",
+      cnyPrice: item.cnyPrice.toString(),
+      quantity: item.quantity.toString(),
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingItemId(null);
+    setEditingFields({ name: "", url: "", cnyPrice: "", quantity: "1" });
+  };
+
+  const handleEditFieldChange = (field, value) => {
+    setEditingFields((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveEdit = (id) => {
+    const parsedPrice = parseFloat(editingFields.cnyPrice);
+    const parsedQty = parseInt(editingFields.quantity);
+    const price = Number.isFinite(parsedPrice) && parsedPrice >= 0 ? parsedPrice : 0;
+    const quantity = Number.isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 1;
+    const normalizedUrl = normalizeProductUrl(editingFields.url || "");
+    const name = editingFields.name.trim() || "Untitled Item";
+    const calc = calculateItem(price);
+
     setItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const updated = { ...item };
-
-        if (field === "name") updated.name = value;
-        if (field === "url") updated.url = normalizeProductUrl(value);
-        if (field === "cnyPrice") {
-          const n = parseFloat(value);
-          updated.cnyPrice = Number.isFinite(n) && n >= 0 ? n : 0;
-        }
-        if (field === "quantity") {
-          const n = parseInt(value);
-          updated.quantity = Number.isFinite(n) && n > 0 ? n : 1;
-        }
-
-        const recalculated = calculateItem(updated.cnyPrice, updated.quantity);
-        return { ...updated, ...recalculated };
-      })
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              name,
+              url: normalizedUrl,
+              cnyPrice: price,
+              quantity,
+              ...calc,
+            }
+          : item
+      )
     );
+    handleCancelEdit();
   };
 
   // Delete item
@@ -124,11 +167,11 @@ export default function App() {
       setItems((prev) =>
         prev.map((item) => ({
           ...item,
-          ...calculateItem(item.cnyPrice, item.quantity),
+          ...calculateItem(item.cnyPrice),
         }))
       );
     }
-  }, [exchangeRate, markupPercent, profitMarginPercent]);
+  }, [calculateItem, items.length]);
 
   // Totals
   const totals = items.reduce(
@@ -147,7 +190,7 @@ export default function App() {
   const handleSaveBatch = () => {
     if (items.length === 0) return;
     const batch = {
-      id: Date.now().toString(),
+      id: createId(),
       name: batchName.trim() || `Batch ${new Date().toLocaleDateString()}`,
       date: new Date().toISOString(),
       items: [...items],
@@ -251,7 +294,7 @@ export default function App() {
           // Multiple batches
           const newBatches = data.batches.map((batch) => ({
             ...batch,
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            id: createId(),
             importedAt: new Date().toISOString(),
           }));
           setHistory([...newBatches, ...history]);
@@ -260,7 +303,7 @@ export default function App() {
           // Single batch
           const newBatch = {
             ...data,
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            id: createId(),
             importedAt: new Date().toISOString(),
           };
           setHistory([newBatch, ...history]);
@@ -362,7 +405,7 @@ export default function App() {
             </div>
           </div>
           <div className="settings-preview">
-            Example: ¥100 → ₦{fmt(calculateItem(100, 1).selling)} selling price
+            Example: ¥100 → ₦{fmt(calculateItem(100).selling)} selling price
           </div>
         </div>
       )}
@@ -429,7 +472,7 @@ export default function App() {
                   <input
                     type="text"
                     inputMode="url"
-                    placeholder="https://example.com/item or 1688/拼多多 link"
+                    placeholder="https://example.com/item or 1688/Pinduoduo link"
                     value={productUrl}
                     onChange={(e) => setProductUrl(e.target.value)}
                   />
@@ -459,8 +502,8 @@ export default function App() {
               </form>
               {cnyPrice > 0 && (
                 <div className="preview-box">
-                  <strong>Preview:</strong> Sell at ₦{fmt(calculateItem(parseFloat(cnyPrice), 1).selling)} 
-                  {" "}(₦{fmt(calculateItem(parseFloat(cnyPrice), 1).profit)} profit per item)
+                  <strong>Preview:</strong> Sell at ₦{fmt(calculateItem(parseFloat(cnyPrice)).selling)} 
+                  {" "}(₦{fmt(calculateItem(parseFloat(cnyPrice)).profit)} profit per item)
                 </div>
               )}
             </div>
@@ -522,68 +565,112 @@ export default function App() {
                         <th>Profit (₦)</th>
                         <th>Total (₦)</th>
                         <th>Link</th>
-                        <th></th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((item) => (
-                        <tr key={item.id}>
-                          <td className="item-name">
-                            <input
-                              className="table-input"
-                              value={item.name}
-                              onChange={(e) => handleUpdateItem(item.id, "name", e.target.value)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              className="table-input number"
-                              step="0.01"
-                              min="0"
-                              value={item.cnyPrice}
-                              onChange={(e) => handleUpdateItem(item.id, "cnyPrice", e.target.value)}
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              className="table-input number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={(e) => handleUpdateItem(item.id, "quantity", e.target.value)}
-                            />
-                          </td>
-                          <td>₦{fmt(item.markedUp)}</td>
-                          <td>₦{fmt(item.selling)}</td>
-                          <td className="profit-cell">₦{fmt(item.profit)}</td>
-                          <td className="total-cell">₦{fmt(item.profit * item.quantity)}</td>
-                          <td>
-                            <input
-                              className="table-input"
-                              placeholder="https://your-link"
-                              value={item.url || ""}
-                              onChange={(e) => handleUpdateItem(item.id, "url", e.target.value)}
-                            />
-                            {item.url ? (
-                              <a href={item.url} target="_blank" rel="noreferrer" className="btn-secondary" style={{ marginTop: "6px" }}>
-                                View
-                              </a>
-                            ) : (
-                              "-"
-                            )}
-                          </td>
-                          <td>
-                            <button
-                              type="button"
-                              className="btn-delete"
-                              onClick={() => handleDeleteItem(item.id)}
-                            >
-                              ✕
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {items.map((item) => {
+                        const isEditing = editingItemId === item.id;
+                        return (
+                          <tr key={item.id} className={isEditing ? "editing-row" : ""}>
+                            <td className="item-name" data-label="Item">
+                              {isEditing ? (
+                                <input
+                                  className="table-input"
+                                  value={editingFields.name}
+                                  onChange={(e) => handleEditFieldChange("name", e.target.value)}
+                                />
+                              ) : (
+                                <span>{item.name}</span>
+                              )}
+                            </td>
+                            <td data-label="CNY">
+                              {isEditing ? (
+                                <input
+                                  type="number"
+                                  className="table-input number"
+                                  step="0.01"
+                                  min="0"
+                                  value={editingFields.cnyPrice}
+                                  onChange={(e) => handleEditFieldChange("cnyPrice", e.target.value)}
+                                />
+                              ) : (
+                                <>¥{item.cnyPrice.toFixed(2)}</>
+                              )}
+                            </td>
+                            <td data-label="Qty">
+                              {isEditing ? (
+                                <input
+                                  type="number"
+                                  className="table-input number"
+                                  min="1"
+                                  value={editingFields.quantity}
+                                  onChange={(e) => handleEditFieldChange("quantity", e.target.value)}
+                                />
+                              ) : (
+                                item.quantity
+                              )}
+                            </td>
+                            <td data-label="Cost">₦{fmt(item.markedUp)}</td>
+                            <td data-label="Sell">₦{fmt(item.selling)}</td>
+                            <td data-label="Profit" className="profit-cell">₦{fmt(item.profit)}</td>
+                            <td data-label="Total" className="total-cell">₦{fmt(item.profit * item.quantity)}</td>
+                            <td data-label="Link">
+                              {isEditing ? (
+                                <input
+                                  className="table-input"
+                                  placeholder="https://your-link"
+                                  value={editingFields.url}
+                                  onChange={(e) => handleEditFieldChange("url", e.target.value)}
+                                />
+                              ) : item.url ? (
+                                <a href={item.url} target="_blank" rel="noreferrer" className="btn-secondary">
+                                  View
+                                </a>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                            <td data-label="Actions">
+                              {isEditing ? (
+                                <div className="row-actions">
+                                  <button
+                                    type="button"
+                                    className="btn-primary btn-small"
+                                    onClick={() => handleSaveEdit(item.id)}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-secondary btn-small"
+                                    onClick={handleCancelEdit}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="row-actions">
+                                  <button
+                                    type="button"
+                                    className="btn-secondary btn-small"
+                                    onClick={() => handleStartEdit(item)}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-delete"
+                                    onClick={() => handleDeleteItem(item.id)}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                     <tfoot>
                       <tr>
@@ -719,6 +806,7 @@ export default function App() {
     </div>
   );
 }
+
 
 
 
